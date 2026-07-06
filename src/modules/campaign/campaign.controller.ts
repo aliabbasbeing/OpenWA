@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Query, Body, HttpCode, Htt
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { CampaignService } from './campaign.service';
+import { Campaign } from './campaign.entity';
 import { CampaignExecutorService } from './campaign-executor.service';
 import { ContactListService } from './contact-list.service';
 import { BlacklistService } from './blacklist.service';
@@ -144,6 +145,22 @@ export class CampaignController {
   @ApiParam({ name: 'id', description: 'Blacklist entry ID' })
   async removeFromBlacklist(@Param('id') id: string) {
     await this.blacklistService.remove(id);
+  }
+
+  // ==================== Campaign fixed paths BEFORE :id ====================
+
+  @Get('analytics/summary')
+  @ApiOperation({ summary: 'Get campaign analytics summary' })
+  async getAnalytics(@Query('sessionId') sessionId?: string) {
+    return this.campaignService.getAnalytics(sessionId);
+  }
+
+  @Post(':id/duplicate')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Duplicate a campaign as draft' })
+  @ApiResponse({ status: 200, description: 'Campaign duplicated' })
+  async duplicate(@Param('id') id: string): Promise<Campaign> {
+    return this.campaignService.duplicate(id);
   }
 
   // ==================== Campaign :id routes (AFTER all fixed paths) ====================

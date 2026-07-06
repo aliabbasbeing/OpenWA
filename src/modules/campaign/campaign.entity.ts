@@ -28,6 +28,7 @@ export interface CampaignSettings {
   respectBusinessHours: boolean;
   skipWeekends: boolean;
   warmupEnabled: boolean;
+  randomizeOrder?: boolean;
 }
 
 export const DEFAULT_CAMPAIGN_SETTINGS: CampaignSettings = {
@@ -40,6 +41,7 @@ export const DEFAULT_CAMPAIGN_SETTINGS: CampaignSettings = {
   respectBusinessHours: true,
   skipWeekends: false,
   warmupEnabled: false,
+  randomizeOrder: false,
 };
 
 @Entity('campaigns')
@@ -90,6 +92,9 @@ export class Campaign {
 
   @Column({ type: jsonColumnType(), default: () => `'${JSON.stringify(DEFAULT_CAMPAIGN_SETTINGS)}'` })
   settings: CampaignSettings;
+
+  @Column({ type: 'boolean', default: false })
+  randomizeOrder: boolean;
 
   @Column({ name: 'schedule_at', type: dateColumnType(), nullable: true, transformer: DateTransformer })
   scheduleAt: Date | null;

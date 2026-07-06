@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Megaphone, Plus, Play, Pause, Loader2, Eye, Search, Filter, XCircle } from 'lucide-react';
-import { campaignApi, sessionApi, type Campaign, type Session } from '../services/api';
+import { Megaphone, Plus, Play, Pause, Loader2, Eye, Search, Filter, XCircle, Copy } from 'lucide-react';
+import { campaignApi, sessionApi, type Campaign, type CampaignAnalytics, type Session } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useToast } from '../components/Toast';
 import { PageHeader } from '../components/PageHeader';
@@ -30,6 +30,7 @@ export function Campaigns() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<CampaignAnalytics | null>(null);
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -53,6 +54,7 @@ export function Campaigns() {
   useEffect(() => {
     void fetchCampaigns();
     void fetchSessions();
+    campaignApi.getAnalytics().then(setAnalytics).catch(() => {});
   }, [fetchCampaigns, fetchSessions]);
 
   const handleAction = async (id: string, action: 'start' | 'pause' | 'resume' | 'cancel') => {
@@ -71,6 +73,16 @@ export function Campaigns() {
     }
   };
 
+  const handleDuplicate = async (id: string) => {
+    try {
+      await campaignApi.duplicate(id);
+      addToast({ type: 'success', title: t('campaigns.duplicate.successTitle'), message: t('campaigns.duplicate.success') });
+      fetchSessions();
+    } catch (err) {
+      addToast({ type: 'error', title: t('campaigns.duplicate.errorTitle'), message: t('campaigns.duplicate.error') });
+    }
+  };
+
   const filtered = campaigns.filter(c => {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
@@ -86,6 +98,14 @@ export function Campaigns() {
         subtitle={t('campaigns.subtitle')}
         actions={<button className="btn-action" onClick={() => navigate('/campaigns/new')}><Plus size={16} /> {t('campaigns.actions.create')}</button>}
       />
+      {analytics && (
+        <div className="analytics-stats-bar">
+          <div className="stat-card"><span className="stat-label">Total Campaigns</span><span className="stat-value">{analytics.totalCampaigns}</span></div>
+          <div className="stat-card"><span className="stat-label">Total Sent</span><span className="stat-value">{analytics.totalSent}</span></div>
+          <div className="stat-card"><span className="stat-label">Delivery Rate</span><span className="stat-value">{analytics.averageDeliveryRate.toFixed(1)}%</span></div>
+          <div className="stat-card"><span className="stat-label">Read Rate</span><span className="stat-value">{analytics.averageReadRate.toFixed(1)}%</span></div>
+        </div>
+      )}
       <div className="campaigns-toolbar">
         <div className="search-box">
           <Search size={16} />
@@ -144,6 +164,7 @@ export function Campaigns() {
                   <td>{c.failedCount}</td>
                   <td>{new Date(c.createdAt).toLocaleDateString()}</td>
                   <td className="actions-cell">
+                    <button className="btn-icon" title={t('campaigns.actions.duplicate')} onClick={() => void handleDuplicate(c.id)}><Copy size={16} /></button>
                     <button className="btn-icon" title={t('campaigns.actions.view')} onClick={() => navigate(`/campaigns/${c.id}`)}><Eye size={16} /></button>
                     {c.status === 'draft' && (
                       <button className="btn-icon btn-success" disabled={actionLoading === c.id} title={t('campaigns.actions.start')} onClick={() => void handleAction(c.id, 'start')}>

@@ -992,6 +992,18 @@ export interface CreateCampaignPayload {
   settings?: Partial<CampaignSettings>;
 }
 
+export interface CampaignAnalytics {
+  totalCampaigns: number;
+  totalSent: number;
+  totalFailed: number;
+  totalDelivered: number;
+  totalRead: number;
+  averageDeliveryRate: number;
+  averageReadRate: number;
+  campaignsByStatus: Record<string, number>;
+  topSessions: Array<{ sessionId: string; campaignCount: number; totalSent: number }>;
+}
+
 export const campaignApi = {
   list: () => request<Campaign[]>('/campaigns'),
   get: (id: string) => request<Campaign>(`/campaigns/${id}`),
@@ -1004,6 +1016,8 @@ export const campaignApi = {
   resume: (id: string) => request<Campaign>(`/campaigns/${id}/resume`, { method: 'POST' }),
   cancel: (id: string) => request<Campaign>(`/campaigns/${id}/cancel`, { method: 'POST' }),
   getProgress: (id: string) => request<CampaignProgress>(`/campaigns/${id}/progress`),
+  duplicate: (id: string) => request<Campaign>(`/campaigns/${id}/duplicate`, { method: 'POST' }),
+  getAnalytics: (sessionId?: string) => request<CampaignAnalytics>(`/campaigns/analytics/summary${sessionId ? `?sessionId=${sessionId}` : ''}`),
 };
 
 export const contactListApi = {

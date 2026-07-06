@@ -8,12 +8,16 @@ import { CampaignService } from './campaign.service';
 import { SessionService } from '../session/session.service';
 import { renderTemplate } from '../../common/utils/template-render';
 import { createLogger } from '../../common/services/logger.service';
+import { HookManager } from '../../core/hooks';
+import type { DeliveryStatus } from '../../engine/interfaces/whatsapp-engine.interface';
 
 @Injectable()
 export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = createLogger('CampaignExecutor');
   private activeCampaigns = new Map<string, AbortController>();
   private resumeTimers = new Map<string, NodeJS.Timeout>();
+  private sentMessages = new Map<string, string>();
+  private scheduledCheckTimer: NodeJS.Timeout | null = null;
 
   constructor(
     @InjectRepository(Campaign, 'data')
@@ -23,6 +27,7 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     private readonly blacklistService: BlacklistService,
     private readonly campaignService: CampaignService,
     private readonly sessionService: SessionService,
+    private readonly hookManager: HookManager,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -32,6 +37,17 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Auto-resuming campaign: ${c.name}`, { campaignId: c.id, action: 'auto_resume' });
       void this.executeCampaign(c.id);
     }
+
+    await this.checkScheduledCampaigns();
+    this.scheduledCheckTimer = setInterval(() => {
+      void this.checkScheduledCampaigns();
+    }, 60_000);
+
+    this.hookManager.register('campaign-executor', 'message:ack', async (ctx) => {
+      const { messageId, status } = ctx.data as { messageId: string; status: DeliveryStatus };
+      this.handleAck(messageId, status);
+      return { continue: true };
+    }, 100);
   }
 
   onModuleDestroy(): void {
@@ -42,8 +58,12 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     for (const [, timer] of this.resumeTimers) {
       clearTimeout(timer);
     }
+    if (this.scheduledCheckTimer) {
+      clearInterval(this.scheduledCheckTimer);
+    }
     this.activeCampaigns.clear();
     this.resumeTimers.clear();
+    this.sentMessages.clear();
   }
 
   async executeCampaign(campaignId: string): Promise<void> {
@@ -63,6 +83,13 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
       if (contacts.length === 0) {
         await this.campaignService.updateProgress(campaignId, { status: CampaignStatus.COMPLETED });
         return;
+      }
+
+      if (campaign.randomizeOrder) {
+        for (let i = contacts.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [contacts[i], contacts[j]] = [contacts[j], contacts[i]];
+        }
       }
 
       const blacklisted = await this.blacklistService.getBlacklistedNumbers(campaign.sessionId);
@@ -185,7 +212,9 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
           }
 
           const chatId = `${contact.number.replace('+', '')}@c.us`;
-          await engine.sendTextMessage(chatId, rendered);
+          const result = await engine.sendTextMessage(chatId, rendered);
+
+          this.sentMessages.set(result.id, campaignId);
 
           sentToday++;
           sentThisHour++;
@@ -339,6 +368,40 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     monday.setDate(monday.getDate() + daysUntilMonday);
     monday.setHours(9, 0, 0, 0);
     this.scheduleResume(campaignId, monday);
+  }
+
+  private async checkScheduledCampaigns(): Promise<void> {
+    const now = new Date();
+    const oneMinuteFromNow = new Date(now.getTime() + 60_000);
+    const scheduled = await this.campaignRepo.find({
+      where: {
+        status: CampaignStatus.DRAFT,
+      },
+    });
+    for (const c of scheduled) {
+      if (c.scheduleAt && c.scheduleAt <= oneMinuteFromNow) {
+        this.logger.log(`Auto-starting scheduled campaign: ${c.name}`, {
+          campaignId: c.id,
+          action: 'scheduled_auto_start',
+        });
+        await this.campaignService.start(c.id);
+        void this.executeCampaign(c.id);
+      }
+    }
+  }
+
+  handleAck(messageId: string, status: DeliveryStatus): void {
+    const campaignId = this.sentMessages.get(messageId);
+    if (!campaignId) return;
+
+    if (status === 'delivered') {
+      void this.campaignRepo.increment({ id: campaignId }, 'deliveredCount', 1)
+        .catch(() => {});
+    } else if (status === 'read') {
+      void this.campaignRepo.increment({ id: campaignId }, 'readCount', 1)
+        .catch(() => {});
+      this.sentMessages.delete(messageId);
+    }
   }
 
   private delay(ms: number): Promise<void> {

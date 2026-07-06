@@ -111,6 +111,15 @@ export function CampaignCreate() {
               rows={6}
             />
             <p className="hint">{t('campaigns.create.variablesHint')}</p>
+            <div className="message-preview-section">
+              <label className="preview-label">Preview</label>
+              <div className="preview-box">
+                {messageTemplate
+                  ? messageTemplate.replace(/\{\{name\}\}/g, 'John Doe').replace(/\{\{number\}\}/g, '1234567890')
+                  : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Type a message above to see preview...</span>
+                }
+              </div>
+            </div>
             <label>{t('campaigns.create.variationsLabel')}</label>
             {messageVariations.map((v, i) => (
               <div key={i} className="variation-row">

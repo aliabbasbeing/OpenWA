@@ -172,6 +172,8 @@ export class CampaignService {
   async updateProgress(id: string, progress: {
     sentCount?: number;
     failedCount?: number;
+    deliveredCount?: number;
+    readCount?: number;
     currentIndex?: number;
     messagesSentToday?: number;
     messagesSentThisHour?: number;
@@ -183,6 +185,78 @@ export class CampaignService {
     const campaign = await this.findOne(id);
     Object.assign(campaign, progress);
     return this.campaignRepo.save(campaign);
+  }
+
+  async duplicate(id: string): Promise<Campaign> {
+    const original = await this.findOne(id);
+    const duplicate = this.campaignRepo.create({
+      name: `${original.name} (Copy)`,
+      sessionId: original.sessionId,
+      messageTemplate: original.messageTemplate,
+      messageVariations: original.messageVariations,
+      contactSource: original.contactSource,
+      contactListId: original.contactListId,
+      manualContacts: original.manualContacts,
+      totalContacts: original.totalContacts,
+      settings: { ...original.settings },
+      status: CampaignStatus.DRAFT,
+      sentCount: 0,
+      failedCount: 0,
+      deliveredCount: 0,
+      readCount: 0,
+      currentIndex: 0,
+      messagesSentToday: 0,
+      messagesSentThisHour: 0,
+    });
+    return this.campaignRepo.save(duplicate);
+  }
+
+  async getAnalytics(sessionId?: string): Promise<{
+    totalCampaigns: number;
+    totalSent: number;
+    totalFailed: number;
+    totalDelivered: number;
+    totalRead: number;
+    averageDeliveryRate: number;
+    averageReadRate: number;
+    campaignsByStatus: Record<string, number>;
+    topSessions: Array<{ sessionId: string; campaignCount: number; totalSent: number }>;
+  }> {
+    const where = sessionId ? { sessionId } : {};
+    const campaigns = await this.campaignRepo.find({ where });
+
+    const totalSent = campaigns.reduce((sum, c) => sum + c.sentCount, 0);
+    const totalFailed = campaigns.reduce((sum, c) => sum + c.failedCount, 0);
+    const totalDelivered = campaigns.reduce((sum, c) => sum + c.deliveredCount, 0);
+    const totalRead = campaigns.reduce((sum, c) => sum + c.readCount, 0);
+
+    const campaignsByStatus: Record<string, number> = {};
+    for (const c of campaigns) {
+      campaignsByStatus[c.status] = (campaignsByStatus[c.status] || 0) + 1;
+    }
+
+    const sessionMap = new Map<string, { campaignCount: number; totalSent: number }>();
+    for (const c of campaigns) {
+      const existing = sessionMap.get(c.sessionId) || { campaignCount: 0, totalSent: 0 };
+      sessionMap.set(c.sessionId, { campaignCount: existing.campaignCount + 1, totalSent: existing.totalSent + c.sentCount });
+    }
+
+    const topSessions = Array.from(sessionMap.entries())
+      .map(([sessionId, data]) => ({ sessionId, ...data }))
+      .sort((a, b) => b.totalSent - a.totalSent)
+      .slice(0, 5);
+
+    return {
+      totalCampaigns: campaigns.length,
+      totalSent,
+      totalFailed,
+      totalDelivered,
+      totalRead,
+      averageDeliveryRate: totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0,
+      averageReadRate: totalDelivered > 0 ? Math.round((totalRead / totalDelivered) * 100) : 0,
+      campaignsByStatus,
+      topSessions,
+    };
   }
 
   async getProgress(id: string): Promise<{

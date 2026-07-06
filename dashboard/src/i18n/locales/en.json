@@ -973,6 +973,36 @@
       "cancelled": "Campaign cancelled",
       "failed": "Campaign failed",
       "error": "Campaign action failed"
+    },
+    "duplicate": {
+      "successTitle": "Campaign Duplicated",
+      "success": "Campaign has been copied as a draft",
+      "errorTitle": "Duplicate Failed",
+      "error": "Failed to duplicate campaign"
+    },
+    "analytics": {
+      "totalCampaigns": "Total Campaigns",
+      "totalSent": "Total Sent",
+      "deliveryRate": "Delivery Rate",
+      "readRate": "Read Rate"
+    },
+    "preview": {
+      "title": "Message Preview",
+      "sampleRender": "Sample Render"
+    },
+    "timeline": {
+      "created": "Created",
+      "started": "Started",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "funnel": {
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "read": "Read",
+      "failed": "Failed"
     }
   },
   "contacts": {
