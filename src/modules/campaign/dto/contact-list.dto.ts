@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsEnum, IsBoolean } from 'class-validator';
 import { ContactListSource } from '../contact-list.entity';
 
 export class CreateContactListDto {
@@ -69,4 +69,15 @@ export class ImportCsvContactListDto {
   })
   @IsOptional()
   variableColumns?: Record<string, string>;
+}
+
+export class ExtractFromSessionDto {
+  @ApiProperty({ description: 'WhatsApp session ID to extract chats from' })
+  @IsString()
+  sessionId: string;
+
+  @ApiPropertyOptional({ description: 'Name for the new contact list' })
+  @IsOptional()
+  @IsString()
+  name?: string;
 }

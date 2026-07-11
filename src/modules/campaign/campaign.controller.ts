@@ -9,7 +9,7 @@ import { ContactListService } from './contact-list.service';
 import { BlacklistService } from './blacklist.service';
 import { SessionService } from '../session/session.service';
 import { CreateCampaignDto, UpdateCampaignDto } from './dto/create-campaign.dto';
-import { CreateContactListDto, ImportCsvContactListDto } from './dto/contact-list.dto';
+import { CreateContactListDto, ImportCsvContactListDto, ExtractFromSessionDto } from './dto/contact-list.dto';
 import { AddToBlacklistDto, ImportBlacklistDto } from './dto/blacklist.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
@@ -108,7 +108,7 @@ export class CampaignController {
     sessionId: { type: 'string' },
     name: { type: 'string' },
   }, required: ['sessionId'] } })
-  async extractFromSession(@Body() body: { sessionId: string; name?: string }) {
+  async extractFromSession(@Body() body: ExtractFromSessionDto) {
     const chats = await this.sessionService.getChats(body.sessionId, { limit: 10000 });
     const seen = new Set<string>();
     const entries: Array<{ number: string; name?: string }> = [];
