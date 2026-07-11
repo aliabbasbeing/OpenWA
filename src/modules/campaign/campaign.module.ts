@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Campaign } from './campaign.entity';
 import { ContactList } from './contact-list.entity';
 import { BlacklistEntry } from './blacklist.entity';
+import { CampaignMessage } from './campaign-message.entity';
 import { CampaignService } from './campaign.service';
 import { ContactListService } from './contact-list.service';
 import { BlacklistService } from './blacklist.service';
@@ -13,7 +14,7 @@ import { SessionModule } from '../session/session.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Campaign, ContactList, BlacklistEntry], 'data'),
+    TypeOrmModule.forFeature([Campaign, ContactList, BlacklistEntry, CampaignMessage], 'data'),
     AuditModule,
     SessionModule,
   ],

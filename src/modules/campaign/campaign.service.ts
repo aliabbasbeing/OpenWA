@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Campaign, CampaignStatus, CampaignContactSource, DEFAULT_CAMPAIGN_SETTINGS } from './campaign.entity';
+import { CampaignMessage, CampaignMessageStatus } from './campaign-message.entity';
 import { ContactList } from './contact-list.entity';
 import { CreateCampaignDto, UpdateCampaignDto } from './dto/create-campaign.dto';
 import { createLogger } from '../../common/services/logger.service';
@@ -15,6 +16,8 @@ export class CampaignService {
     private readonly campaignRepo: Repository<Campaign>,
     @InjectRepository(ContactList, 'data')
     private readonly contactListRepo: Repository<ContactList>,
+    @InjectRepository(CampaignMessage, 'data')
+    private readonly campaignMessageRepo: Repository<CampaignMessage>,
   ) {}
 
   async create(dto: CreateCampaignDto): Promise<Campaign> {
@@ -284,5 +287,21 @@ export class CampaignService {
       percentComplete,
       status: campaign.status,
     };
+  }
+
+  async getCampaignMessages(campaignId: string, options?: { status?: CampaignMessageStatus; page?: number; limit?: number }) {
+    const page = options?.page || 1;
+    const limit = options?.limit || 50;
+    const where: any = { campaignId };
+    if (options?.status) where.status = options.status;
+
+    const [messages, total] = await this.campaignMessageRepo.findAndCount({
+      where,
+      order: { messageIndex: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return { messages, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Play, Pause, XCircle, Loader2, Megaphone, Settings, Save, X, Copy, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Play, Pause, XCircle, Loader2, Megaphone, Settings, Save, X, Copy, ChevronRight, MessageSquare } from 'lucide-react';
 import { campaignApi, type Campaign, type CampaignProgress, type CampaignSettings } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useToast } from '../components/Toast';
@@ -182,6 +182,9 @@ export function CampaignDetail() {
           <span className={`status-badge status-${campaign.status}`}>{campaign.status}</span>
         </div>
         <div className="detail-header-actions">
+          {campaign.sentCount > 0 && (
+            <button className="btn-secondary" onClick={() => navigate(`/campaigns/${id}/messages`)}><MessageSquare size={16} /> {t('campaigns.messages.viewMessages')}</button>
+          )}
           <button className="btn-secondary" onClick={() => void handleDuplicate()}><Copy size={16} /> {t('campaigns.actions.duplicate')}</button>
           {canEdit && (
             editing

@@ -16,6 +16,7 @@ const Sessions = lazy(() => import('./pages/Sessions').then(m => ({ default: m.S
 const Campaigns = lazy(() => import('./pages/Campaigns').then(m => ({ default: m.Campaigns })));
 const CampaignCreate = lazy(() => import('./pages/CampaignCreate').then(m => ({ default: m.CampaignCreate })));
 const CampaignDetail = lazy(() => import('./pages/CampaignDetail').then(m => ({ default: m.CampaignDetail })));
+const CampaignMessages = lazy(() => import('./pages/CampaignMessages').then(m => ({ default: m.CampaignMessages })));
 const Contacts = lazy(() => import('./pages/Contacts').then(m => ({ default: m.Contacts })));
 const Blacklist = lazy(() => import('./pages/Blacklist').then(m => ({ default: m.Blacklist })));
 const Chats = lazy(() => import('./pages/Chats').then(m => ({ default: m.Chats })));
@@ -113,6 +114,7 @@ function AppContent() {
             <Route path="campaigns" element={<Campaigns />} />
             <Route path="campaigns/new" element={<CampaignCreate />} />
             <Route path="campaigns/:id" element={<CampaignDetail />} />
+            <Route path="campaigns/:id/messages" element={<CampaignMessages />} />
             <Route path="contacts" element={<Contacts />} />
             <Route path="blacklist" element={<Blacklist />} />
             <Route path="chats" element={<Chats />} />

@@ -899,7 +899,8 @@
       "resume": "Resume",
       "cancel": "Cancel",
       "view": "View Details",
-      "delete": "Delete"
+      "delete": "Delete",
+      "duplicate": "Duplicate"
     },
     "filter": {
       "all": "All Status",
@@ -1003,6 +1004,30 @@
       "delivered": "Delivered",
       "read": "Read",
       "failed": "Failed"
+    },
+    "messages": {
+      "title": "Campaign Messages",
+      "viewMessages": "View Messages",
+      "viewCampaign": "View Campaign",
+      "backToCampaign": "Back to Campaign",
+      "all": "All",
+      "pending": "Pending",
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "read": "Read",
+      "failed": "Failed",
+      "contact": "Contact",
+      "message": "Message",
+      "status": "Status",
+      "sentAt": "Sent At",
+      "deliveredAt": "Delivered At",
+      "readAt": "Read At",
+      "failedAt": "Failed At",
+      "error": "Error",
+      "noMessages": "No messages sent yet",
+      "noMessagesDesc": "Start this campaign to begin sending messages",
+      "pageOf": "Page {{current}} of {{total}}",
+      "totalMessages": "Total Messages"
     }
   },
   "contacts": {
@@ -1024,7 +1049,18 @@
       "import": "Import CSV",
       "addContacts": "Add Contacts",
       "view": "View",
-      "delete": "Delete"
+      "delete": "Delete",
+      "extractFromWa": "Extract Recent Chats",
+      "exportCsv": "Export CSV"
+    },
+    "extract": {
+      "title": "Extract Recent Chats",
+      "hint": "Pull phone numbers from your recent WhatsApp chats into a new contact list. Only individual (non-group) chats are included.",
+      "sessionLabel": "Session",
+      "sessionPlaceholder": "Select a ready session...",
+      "nameLabel": "List Name (optional)",
+      "namePlaceholder": "e.g. Recent Chats - Jul 2026",
+      "submit": "Extract Chats"
     },
     "create": {
       "title": "Create Contact List",
@@ -1053,7 +1089,16 @@
       "imported": "Contacts imported successfully",
       "contactsAdded": "Contacts added",
       "deleted": "Contact list deleted",
+      "extracted": "Extracted {{count}} chats",
+      "extractError": "Failed to extract chats from session",
+      "sessionNotReady": "Session is not connected. Start the session first.",
+      "exported": "CSV downloaded",
       "error": "Contact list action failed"
+    },
+    "empty": {
+      "title": "No contact lists",
+      "description": "Create a contact list or extract contacts from a WhatsApp session",
+      "selectList": "Select a list to view contacts"
     }
   },
   "blacklist": {

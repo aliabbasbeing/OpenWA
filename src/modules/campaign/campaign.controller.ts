@@ -1,11 +1,13 @@
-import { Controller, Get, Post, Patch, Delete, Param, Query, Body, HttpCode, HttpStatus, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, HttpCode, HttpStatus, UseInterceptors, UploadedFile, BadRequestException, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { CampaignService } from './campaign.service';
 import { Campaign } from './campaign.entity';
+import { CampaignMessage, CampaignMessageStatus } from './campaign-message.entity';
 import { CampaignExecutorService } from './campaign-executor.service';
 import { ContactListService } from './contact-list.service';
 import { BlacklistService } from './blacklist.service';
+import { SessionService } from '../session/session.service';
 import { CreateCampaignDto, UpdateCampaignDto } from './dto/create-campaign.dto';
 import { CreateContactListDto, ImportCsvContactListDto } from './dto/contact-list.dto';
 import { AddToBlacklistDto, ImportBlacklistDto } from './dto/blacklist.dto';
@@ -22,6 +24,7 @@ export class CampaignController {
     private readonly campaignExecutor: CampaignExecutorService,
     private readonly contactListService: ContactListService,
     private readonly blacklistService: BlacklistService,
+    private readonly sessionService: SessionService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -98,6 +101,52 @@ export class CampaignController {
     return this.contactListService.addContacts(id, body.contacts);
   }
 
+  @Post('contact-lists/extract-from-session')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Extract recent chat contacts from a WhatsApp session' })
+  @ApiBody({ schema: { type: 'object', properties: {
+    sessionId: { type: 'string' },
+    name: { type: 'string' },
+  }, required: ['sessionId'] } })
+  async extractFromSession(@Body() body: { sessionId: string; name?: string }) {
+    const chats = await this.sessionService.getChats(body.sessionId, { limit: 10000 });
+    const seen = new Set<string>();
+    const entries: Array<{ number: string; name?: string }> = [];
+    for (const c of chats) {
+      if (c.isGroup || !c.id.endsWith('@c.us')) continue;
+      const raw = c.id.replace('@c.us', '');
+      const digits = raw.replace(/\D/g, '');
+      if (digits.length < 7 || /^0+$/.test(digits)) continue;
+      const number = raw.startsWith('+') ? raw : `+${raw}`;
+      if (seen.has(number)) continue;
+      seen.add(number);
+      entries.push({
+        number,
+        name: c.name && c.name !== raw && c.name !== number ? c.name : undefined,
+      });
+    }
+    if (entries.length === 0) throw new BadRequestException('No recent chats found in this session');
+    return this.contactListService.create({
+      name: body.name || `Recent Chats - ${new Date().toISOString().slice(0, 10)}`,
+      contacts: entries,
+    });
+  }
+
+  @Get('contact-lists/:id/export')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Export contact list as CSV' })
+  @ApiParam({ name: 'id', description: 'Contact List ID' })
+  async exportCsv(@Param('id') id: string, @Res() res: any) {
+    const list = await this.contactListService.findOne(id);
+    const header = 'number,name\n';
+    const rows = list.contacts.map(c =>
+      `"${c.number}","${(c.name || '').replace(/"/g, '""')}"`
+    ).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${list.name.replace(/[^a-zA-Z0-9]/g, '_')}.csv"`);
+    res.send(header + rows);
+  }
+
   @Delete('contact-lists/:id')
   @RequireRole(ApiKeyRole.OPERATOR)
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -170,6 +219,22 @@ export class CampaignController {
   @ApiParam({ name: 'id', description: 'Campaign ID' })
   async getCampaign(@Param('id') id: string) {
     return this.campaignService.findOne(id);
+  }
+
+  @Get(':id/messages')
+  @ApiOperation({ summary: 'Get campaign messages with delivery status' })
+  @ApiQuery({ name: 'status', required: false, enum: CampaignMessageStatus })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  async getCampaignMessages(
+    @Param('id') id: string,
+    @Query('status') status?: CampaignMessageStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = parseInt(page || '1', 10);
+    const limitNum = parseInt(limit || '50', 10);
+    return this.campaignService.getCampaignMessages(id, { status, page: pageNum, limit: limitNum });
   }
 
   @Patch(':id')

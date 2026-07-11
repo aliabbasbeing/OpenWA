@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, Plus, Upload, Loader2, Trash2, Eye } from 'lucide-react';
-import { contactListApi, type ContactList } from '../services/api';
+import { Users, Plus, Upload, Loader2, Trash2, Eye, Download, Smartphone, X } from 'lucide-react';
+import { contactListApi, sessionApi, type ContactList, type Session } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useToast } from '../components/Toast';
 import { PageHeader } from '../components/PageHeader';
@@ -22,6 +22,12 @@ export function Contacts() {
   const [showAddContacts, setShowAddContacts] = useState(false);
   const [addNumbers, setAddNumbers] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showExtract, setShowExtract] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [extractSessionId, setExtractSessionId] = useState('');
+  const [extractName, setExtractName] = useState('');
+  const [extracting, setExtracting] = useState(false);
 
   const fetchLists = useCallback(async () => {
     try {
@@ -95,12 +101,63 @@ export function Contacts() {
     }
   };
 
+  const openExtractModal = async () => {
+    setShowExtract(true);
+    try {
+      const data = await sessionApi.list();
+      setSessions(data);
+    } catch { /* ignore */ }
+  };
+
+  const handleExtract = async () => {
+    if (!extractSessionId) return;
+    setExtracting(true);
+    try {
+      const list = await contactListApi.extractFromSession(
+        extractSessionId,
+        extractName || undefined,
+      );
+      addToast({ type: 'success', title: t('contacts.toasts.extracted', { count: list.contactCount }) });
+      setLists(prev => [...prev, list]);
+      setSelectedList(list);
+      setShowExtract(false);
+      setExtractSessionId('');
+      setExtractName('');
+    } catch (err: any) {
+      const msg = err?.message?.includes('not started')
+        ? t('contacts.toasts.sessionNotReady')
+        : t('contacts.toasts.extractError');
+      addToast({ type: 'error', title: msg });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    if (!selectedList) return;
+    try {
+      await contactListApi.exportCsv(selectedList.id);
+      addToast({ type: 'success', title: t('contacts.toasts.exported') });
+    } catch {
+      addToast({ type: 'error', title: t('contacts.toasts.error') });
+    }
+  };
+
   return (
     <div className="contacts-page">
       <PageHeader
         title={t('contacts.title')}
         subtitle={t('contacts.subtitle')}
-        actions={<button className="btn-action" onClick={() => setShowCreate(true)}><Plus size={16} /> {t('contacts.actions.create')}</button>}
+        actions={
+          <>
+            <button className="btn-action" onClick={() => void openExtractModal()}>
+              <Smartphone size={16} /> {t('contacts.actions.extractFromWa')}
+            </button>
+            <button className="btn-action" onClick={() => setShowCreate(true)}>
+              <Plus size={16} /> {t('contacts.actions.create')}
+            </button>
+          </>
+        }
       />
 
       {showCreate && (
@@ -139,6 +196,33 @@ export function Contacts() {
         </div>
       )}
 
+      {showExtract && (
+        <div className="modal-overlay" onClick={() => setShowExtract(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header-row">
+              <h3>{t('contacts.extract.title')}</h3>
+              <button className="btn-icon" onClick={() => setShowExtract(false)}><X size={16} /></button>
+            </div>
+            <p className="modal-hint">{t('contacts.extract.hint')}</p>
+            <label>{t('contacts.extract.sessionLabel')}</label>
+            <select value={extractSessionId} onChange={e => setExtractSessionId(e.target.value)}>
+              <option value="">{t('contacts.extract.sessionPlaceholder')}</option>
+              {sessions.filter(s => s.status === 'ready').map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+              ))}
+            </select>
+            <label>{t('contacts.extract.nameLabel')}</label>
+            <input type="text" value={extractName} onChange={e => setExtractName(e.target.value)} placeholder={t('contacts.extract.namePlaceholder')} />
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowExtract(false)}>{t('common.cancel')}</button>
+              <button className="btn-action" disabled={extracting || !extractSessionId} onClick={() => void handleExtract()}>
+                {extracting ? <Loader2 className="animate-spin" size={16} /> : t('contacts.extract.submit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <input type="file" ref={fileInputRef} accept=".csv" style={{ display: 'none' }} onChange={e => void handleImport(e)} />
 
       {loading ? (
@@ -148,7 +232,14 @@ export function Contacts() {
           <Users size={48} className="empty-icon" />
           <h3>{t('contacts.empty.title')}</h3>
           <p>{t('contacts.empty.description')}</p>
-          <button className="btn-action" onClick={() => setShowCreate(true)}><Plus size={16} /> {t('contacts.actions.create')}</button>
+          <div className="empty-actions">
+            <button className="btn-action" onClick={() => void openExtractModal()}>
+              <Smartphone size={16} /> {t('contacts.actions.extractFromWa')}
+            </button>
+            <button className="btn-action" onClick={() => setShowCreate(true)}>
+              <Plus size={16} /> {t('contacts.actions.create')}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="contacts-layout">
@@ -175,6 +266,7 @@ export function Contacts() {
                   <div className="toolbar-actions">
                     <button className="btn-action" onClick={() => setShowAddContacts(true)}><Plus size={16} /> {t('contacts.actions.addContacts')}</button>
                     <button className="btn-action" onClick={() => fileInputRef.current?.click()}><Upload size={16} /> {t('contacts.actions.import')}</button>
+                    <button className="btn-action" onClick={() => void handleExportCsv()}><Download size={16} /> {t('contacts.actions.exportCsv')}</button>
                   </div>
                 </div>
                 <div className="contacts-table">
@@ -197,7 +289,7 @@ export function Contacts() {
                 </div>
               </>
             ) : (
-              <div className="empty-state"><Eye size={48} className="empty-icon" /><p>Select a list to view contacts</p></div>
+              <div className="empty-state"><Eye size={48} className="empty-icon" /><p>{t('contacts.empty.selectList')}</p></div>
             )}
           </div>
         </div>

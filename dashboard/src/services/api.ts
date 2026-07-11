@@ -422,6 +422,8 @@ export const sessionApi = {
   getGroups: (id: string) =>
     request<{ id: string; name: string; linkedParentJID?: string | null }[]>(`/sessions/${id}/groups`),
   getChats: (id: string) => request<Chat[]>(`/sessions/${id}/chats`),
+  getContacts: (id: string) =>
+    request<Array<{ id: string; name?: string; pushName?: string; number: string; isMyContact: boolean }>>(`/sessions/${id}/contacts`),
   markChatRead: (id: string, chatId: string) =>
     request<{ success: boolean }>(`/sessions/${id}/chats/read`, {
       method: 'POST',
@@ -970,6 +972,33 @@ export interface BlacklistEntry {
   createdAt: string;
 }
 
+export interface CampaignMessage {
+  id: string;
+  campaignId: string;
+  sessionId: string;
+  contactNumber: string;
+  contactName: string | null;
+  renderedMessage: string;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+  waMessageId: string | null;
+  errorMessage: string | null;
+  retryCount: number;
+  messageIndex: number;
+  createdAt: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  failedAt: string | null;
+}
+
+export interface CampaignMessagesResponse {
+  messages: CampaignMessage[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface CampaignProgress {
   totalContacts: number;
   sentCount: number;
@@ -1018,6 +1047,14 @@ export const campaignApi = {
   getProgress: (id: string) => request<CampaignProgress>(`/campaigns/${id}/progress`),
   duplicate: (id: string) => request<Campaign>(`/campaigns/${id}/duplicate`, { method: 'POST' }),
   getAnalytics: (sessionId?: string) => request<CampaignAnalytics>(`/campaigns/analytics/summary${sessionId ? `?sessionId=${sessionId}` : ''}`),
+  getMessages: (id: string, params?: { status?: string; page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return request<CampaignMessagesResponse>(`/campaigns/${id}/messages${qs ? `?${qs}` : ''}`);
+  },
 };
 
 export const contactListApi = {
@@ -1031,6 +1068,24 @@ export const contactListApi = {
     const formData = new FormData();
     formData.append('file', file);
     return request<ContactList>(`/campaigns/contact-lists/${id}/import`, { method: 'POST', body: formData });
+  },
+  extractFromSession: (sessionId: string, name?: string) =>
+    request<ContactList>('/campaigns/contact-lists/extract-from-session', {
+      method: 'POST', body: JSON.stringify({ sessionId, name }),
+    }),
+  exportCsv: async (id: string) => {
+    const apiKey = sessionStorage.getItem('openwa_api_key');
+    const resp = await fetch(`${API_BASE_URL}/campaigns/contact-lists/${id}/export`, {
+      headers: apiKey ? { 'X-API-Key': apiKey } : {},
+    });
+    if (!resp.ok) throw new Error('Export failed');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = resp.headers.get('Content-Disposition')?.match(/filename="?(.+?)"?$/)?.[1] || 'contacts.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   },
   delete: (id: string) => request<void>(`/campaigns/contact-lists/${id}`, { method: 'DELETE' }),
 };

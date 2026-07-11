@@ -299,6 +299,17 @@ export class SessionController {
     });
   }
 
+  @Get(':id/contacts')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Get WhatsApp contacts from a session' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiResponse({ status: 200, description: 'List of contacts' })
+  @ApiResponse({ status: 400, description: 'Session not ready' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  async getContacts(@Param('id') id: string) {
+    return this.sessionService.getContacts(id);
+  }
+
   @Post(':id/chats/read')
   @RequireRole(ApiKeyRole.OPERATOR)
   @ApiOperation({ summary: 'Mark a chat as read/seen' })

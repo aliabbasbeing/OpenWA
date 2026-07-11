@@ -1437,6 +1437,20 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     return paginate(chats, opts.limit, opts.offset);
   }
 
+  async getContacts(id: string): Promise<Array<{ id: string; name?: string; pushName?: string; number: string; isMyContact: boolean }>> {
+    await this.findOne(id);
+    const engine = this.engines.get(id);
+    if (!engine) throw new BadRequestException('Session is not started');
+    const contacts = await engine.getContacts();
+    return contacts.map(c => ({
+      id: c.id,
+      name: c.name,
+      pushName: c.pushName,
+      number: c.number,
+      isMyContact: c.isMyContact,
+    }));
+  }
+
   async sendSeen(id: string, chatId: string): Promise<boolean> {
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);

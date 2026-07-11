@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Campaign, CampaignStatus } from './campaign.entity';
+import { CampaignMessage, CampaignMessageStatus } from './campaign-message.entity';
 import { ContactList } from './contact-list.entity';
 import { BlacklistService } from './blacklist.service';
 import { CampaignService } from './campaign.service';
@@ -24,6 +25,8 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     private readonly campaignRepo: Repository<Campaign>,
     @InjectRepository(ContactList, 'data')
     private readonly contactListRepo: Repository<ContactList>,
+    @InjectRepository(CampaignMessage, 'data')
+    private readonly campaignMessageRepo: Repository<CampaignMessage>,
     private readonly blacklistService: BlacklistService,
     private readonly campaignService: CampaignService,
     private readonly sessionService: SessionService,
@@ -45,7 +48,7 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
 
     this.hookManager.register('campaign-executor', 'message:ack', async (ctx) => {
       const { messageId, status } = ctx.data as { messageId: string; status: DeliveryStatus };
-      this.handleAck(messageId, status);
+      await this.handleAck(messageId, status);
       return { continue: true };
     }, 100);
   }
@@ -200,6 +203,8 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
           ...contact.variables,
         });
 
+        let savedMsg: CampaignMessage | null = null;
+
         try {
           const engine = this.sessionService.getEngine(campaign.sessionId);
           if (!engine) {
@@ -212,8 +217,35 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
           }
 
           const chatId = `${contact.number.replace('+', '')}@c.us`;
+          const campaignMsg = this.campaignMessageRepo.create({
+            campaignId: campaign.id,
+            sessionId: campaign.sessionId,
+            contactNumber: contact.number,
+            contactName: contact.name || null,
+            renderedMessage: rendered,
+            status: CampaignMessageStatus.PENDING,
+            messageIndex: i,
+          });
+          savedMsg = await this.campaignMessageRepo.save(campaignMsg);
+
+          // Natural typing flow: show typing indicator, wait, then send
+          if (typeof engine.sendChatState === 'function') {
+            await engine.sendChatState(chatId, 'typing');
+            // Simulate realistic typing time: 1-3 seconds based on message length
+            const typingDuration = Math.min(1000 + rendered.length * 10, 3000);
+            await this.delay(typingDuration);
+          }
+
           const result = await engine.sendTextMessage(chatId, rendered);
 
+          if (typeof engine.sendChatState === 'function') {
+            await engine.sendChatState(chatId, 'paused');
+          }
+
+          savedMsg.status = CampaignMessageStatus.SENT;
+          savedMsg.waMessageId = result.id;
+          savedMsg.sentAt = new Date();
+          await this.campaignMessageRepo.save(savedMsg);
           this.sentMessages.set(result.id, campaignId);
 
           sentToday++;
@@ -241,6 +273,13 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
             contact: contact.number,
             action: 'message_failed',
           });
+
+          if (savedMsg) {
+            savedMsg.status = CampaignMessageStatus.FAILED;
+            savedMsg.errorMessage = String(error);
+            savedMsg.failedAt = new Date();
+            await this.campaignMessageRepo.save(savedMsg);
+          }
 
           await this.campaignService.updateProgress(campaignId, {
             failedCount: freshCampaign.failedCount + 1,
@@ -390,18 +429,41 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  handleAck(messageId: string, status: DeliveryStatus): void {
+  async handleAck(messageId: string, status: DeliveryStatus): Promise<void> {
     const campaignId = this.sentMessages.get(messageId);
     if (!campaignId) return;
 
-    if (status === 'delivered') {
-      void this.campaignRepo.increment({ id: campaignId }, 'deliveredCount', 1)
-        .catch(() => {});
-    } else if (status === 'read') {
-      void this.campaignRepo.increment({ id: campaignId }, 'readCount', 1)
-        .catch(() => {});
-      this.sentMessages.delete(messageId);
+    try {
+      if (status === 'delivered') {
+        const msg = await this.campaignMessageRepo.findOne({ where: { waMessageId: messageId } });
+        if (msg && msg.status !== CampaignMessageStatus.DELIVERED) {
+          msg.status = CampaignMessageStatus.DELIVERED;
+          msg.deliveredAt = new Date();
+          await this.campaignMessageRepo.save(msg);
+          await this.recomputeCampaignDeliveryCounts(campaignId);
+        }
+      } else if (status === 'read') {
+        const msg = await this.campaignMessageRepo.findOne({ where: { waMessageId: messageId } });
+        if (msg && msg.status !== CampaignMessageStatus.READ) {
+          msg.status = CampaignMessageStatus.READ;
+          msg.readAt = new Date();
+          await this.campaignMessageRepo.save(msg);
+          await this.recomputeCampaignDeliveryCounts(campaignId);
+        }
+        this.sentMessages.delete(messageId);
+      }
+    } catch (error) {
+      this.logger.error(`handleAck error for ${messageId}: ${String(error)}`, undefined, {
+        campaignId, messageId, status, action: 'handle_ack_error' });
     }
+  }
+
+  private async recomputeCampaignDeliveryCounts(campaignId: string): Promise<void> {
+    const delivered = await this.campaignMessageRepo.count({
+      where: { campaignId, status: CampaignMessageStatus.DELIVERED } });
+    const read = await this.campaignMessageRepo.count({
+      where: { campaignId, status: CampaignMessageStatus.READ } });
+    await this.campaignRepo.update(campaignId, { deliveredCount: delivered, readCount: read });
   }
 
   private delay(ms: number): Promise<void> {
