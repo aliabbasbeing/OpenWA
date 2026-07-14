@@ -490,7 +490,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     this.client.on('message_ack', (msg, ack) => {
       // Map the whatsapp-web.js MessageAck integer to the neutral DeliveryStatus here, at the
       // adapter boundary, so no downstream consumer ever sees engine-specific ack codes.
-      this.callbacks.onMessageAck?.(msg.id._serialized, wwebjsAckToDeliveryStatus(ack));
+      const messageId = msg?.id?._serialized ?? msg?.id?.id ?? msg?.id;
+      if (messageId) {
+        this.callbacks.onMessageAck?.(messageId, wwebjsAckToDeliveryStatus(ack));
+      }
     });
 
     this.client.on('message_revoke_everyone', (after, before) => {
