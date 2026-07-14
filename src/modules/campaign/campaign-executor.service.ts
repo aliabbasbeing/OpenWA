@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Campaign, CampaignStatus } from './campaign.entity';
@@ -15,12 +15,13 @@ import { HookManager } from '../../core/hooks';
 import type { DeliveryStatus } from '../../engine/interfaces/whatsapp-engine.interface';
 
 @Injectable()
-export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
+export class CampaignExecutorService implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = createLogger('CampaignExecutor');
   private activeCampaigns = new Map<string, AbortController>();
   private resumeTimers = new Map<string, NodeJS.Timeout>();
   private sentMessages = new Map<string, string>();
   private scheduledCheckTimer: NodeJS.Timeout | null = null;
+  private engineRetryTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     @InjectRepository(Campaign, 'data')
@@ -38,11 +39,6 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     this.logger.log('Campaign executor initialized');
-    const running = await this.campaignRepo.find({ where: { status: CampaignStatus.RUNNING } });
-    for (const c of running) {
-      this.logger.log(`Auto-resuming campaign: ${c.name}`, { campaignId: c.id, action: 'auto_resume' });
-      void this.executeCampaign(c.id);
-    }
 
     await this.checkScheduledCampaigns();
     this.scheduledCheckTimer = setInterval(() => {
@@ -56,6 +52,19 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     }, 100);
   }
 
+  async onApplicationBootstrap(): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    const running = await this.campaignRepo.find({ where: { status: CampaignStatus.RUNNING } });
+    if (running.length === 0) return;
+
+    this.logger.log(`Auto-resuming ${running.length} running campaign(s)`, { action: 'auto_resume' });
+    for (const c of running) {
+      this.logger.log(`Auto-resuming campaign: ${c.name}`, { campaignId: c.id, action: 'auto_resume' });
+      void this.executeCampaignWithRetry(c.id);
+    }
+  }
+
   onModuleDestroy(): void {
     for (const [id, controller] of this.activeCampaigns) {
       controller.abort();
@@ -64,11 +73,15 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     for (const [, timer] of this.resumeTimers) {
       clearTimeout(timer);
     }
+    for (const [, timer] of this.engineRetryTimers) {
+      clearTimeout(timer);
+    }
     if (this.scheduledCheckTimer) {
       clearInterval(this.scheduledCheckTimer);
     }
     this.activeCampaigns.clear();
     this.resumeTimers.clear();
+    this.engineRetryTimers.clear();
     this.sentMessages.clear();
   }
 
@@ -212,11 +225,12 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
         try {
           const engine = this.sessionService.getEngine(campaign.sessionId);
           if (!engine) {
-            this.logger.error(`Session engine not available for ${campaign.sessionId}`, undefined, {
+            this.logger.warn(`Session engine not available for ${campaign.sessionId}, will retry in 15s`, {
               campaignId,
-              action: 'engine_unavailable',
+              action: 'engine_unavailable_retry',
             });
-            await this.campaignService.updateProgress(campaignId, { status: CampaignStatus.FAILED });
+            await this.campaignService.updateProgress(campaignId, { status: CampaignStatus.PAUSED });
+            this.scheduleEngineRetry(campaignId, 15_000);
             return;
           }
 
@@ -400,6 +414,45 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
       clearTimeout(timer);
       this.resumeTimers.delete(campaignId);
     }
+    const retryTimer = this.engineRetryTimers.get(campaignId);
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      this.engineRetryTimers.delete(campaignId);
+    }
+  }
+
+  private scheduleEngineRetry(campaignId: string, delayMs: number): void {
+    const existing = this.engineRetryTimers.get(campaignId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.engineRetryTimers.delete(campaignId);
+      void this.executeCampaignWithRetry(campaignId);
+    }, delayMs);
+    this.engineRetryTimers.set(campaignId, timer);
+  }
+
+  private async executeCampaignWithRetry(campaignId: string, attempt = 1): Promise<void> {
+    const campaign = await this.campaignService.findOne(campaignId);
+    if (campaign.status !== CampaignStatus.RUNNING) return;
+
+    const engine = this.sessionService.getEngine(campaign.sessionId);
+    if (!engine) {
+      if (attempt >= 10) {
+        this.logger.error(`Engine still unavailable after ${attempt} retries, marking campaign failed`, undefined, {
+          campaignId, action: 'engine_retry_exhausted',
+        });
+        await this.campaignService.updateProgress(campaignId, { status: CampaignStatus.FAILED });
+        return;
+      }
+      this.logger.warn(`Engine not ready yet, retry #${attempt} in 15s`, {
+        campaignId, action: 'engine_retry',
+      });
+      this.scheduleEngineRetry(campaignId, 15_000);
+      return;
+    }
+
+    await this.executeCampaign(campaignId);
   }
 
   private async resolveContacts(campaign: Campaign): Promise<Array<{ number: string; name?: string; variables?: Record<string, string> }>> {
@@ -455,7 +508,7 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
       const campaign = await this.campaignService.findOne(campaignId);
       if (campaign.status === CampaignStatus.PAUSED) {
         await this.campaignService.resume(campaignId);
-        void this.executeCampaign(campaignId);
+        void this.executeCampaignWithRetry(campaignId);
       }
     }, delay);
     timer.unref?.();
@@ -493,7 +546,7 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
           action: 'scheduled_auto_start',
         });
         await this.campaignService.start(c.id);
-        void this.executeCampaign(c.id);
+        void this.executeCampaignWithRetry(c.id);
       }
     }
   }
