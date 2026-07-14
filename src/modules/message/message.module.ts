@@ -6,11 +6,12 @@ import { MessageTypeBackfillService } from './message-type-backfill.service';
 import { MessageController } from './message.controller';
 import { SessionModule } from '../session/session.module';
 import { TemplateModule } from '../template/template.module';
+import { MessageLogModule } from '../message-log/message-log.module';
 import { Message } from './entities/message.entity';
 import { MessageBatch } from './entities/message-batch.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Message, MessageBatch], 'data'), SessionModule, TemplateModule],
+  imports: [TypeOrmModule.forFeature([Message, MessageBatch], 'data'), SessionModule, TemplateModule, MessageLogModule],
   controllers: [MessageController],
   providers: [MessageService, BulkMessageService, MessageTypeBackfillService],
   exports: [MessageService, BulkMessageService],

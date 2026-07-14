@@ -6,6 +6,7 @@ export enum CampaignMessageStatus {
   DELIVERED = 'delivered',
   READ = 'read',
   FAILED = 'failed',
+  SKIPPED = 'skipped',
 }
 
 @Entity('campaign_messages')
@@ -60,4 +61,7 @@ export class CampaignMessage {
 
   @Column({ type: 'date', nullable: true })
   failedAt: Date | null;
+
+  @Column({ type: 'date', nullable: true })
+  skippedAt: Date | null;
 }

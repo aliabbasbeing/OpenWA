@@ -1105,3 +1105,58 @@ export const blacklistApi = {
     ),
   remove: (id: string) => request<void>(`/campaigns/blacklist/${id}`, { method: 'DELETE' }),
 };
+
+export interface MessageLogEntry {
+  id: string;
+  sessionId: string;
+  sessionName: string | null;
+  direction: string;
+  type: string;
+  chatId: string;
+  contactNumber: string;
+  contactName: string | null;
+  body: string;
+  status: string;
+  errorMessage: string | null;
+  waMessageId: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface MessageLogStats {
+  total: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  skipped: number;
+}
+
+export const messageLogApi = {
+  list: (params?: {
+    page?: number;
+    limit?: number;
+    sessionId?: string;
+    status?: string;
+    direction?: string;
+    type?: string;
+    contactNumber?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    campaignId?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== '') query.set(key, String(val));
+      });
+    }
+    const qs = query.toString();
+    return request<{ data: MessageLogEntry[]; total: number }>(`/message-logs${qs ? `?${qs}` : ''}`);
+  },
+  stats: () => request<MessageLogStats>('/message-logs/stats'),
+  get: (id: string) => request<MessageLogEntry>(`/message-logs/${id}`),
+};

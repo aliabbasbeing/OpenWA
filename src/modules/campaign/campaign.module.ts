@@ -11,12 +11,14 @@ import { CampaignExecutorService } from './campaign-executor.service';
 import { CampaignController } from './campaign.controller';
 import { AuditModule } from '../audit/audit.module';
 import { SessionModule } from '../session/session.module';
+import { MessageLogModule } from '../message-log/message-log.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Campaign, ContactList, BlacklistEntry, CampaignMessage], 'data'),
     AuditModule,
     SessionModule,
+    MessageLogModule,
   ],
   controllers: [CampaignController],
   providers: [CampaignService, ContactListService, BlacklistService, CampaignExecutorService],

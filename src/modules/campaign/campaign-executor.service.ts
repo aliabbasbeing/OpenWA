@@ -7,6 +7,8 @@ import { ContactList } from './contact-list.entity';
 import { BlacklistService } from './blacklist.service';
 import { CampaignService } from './campaign.service';
 import { SessionService } from '../session/session.service';
+import { MessageLogService } from '../message-log/message-log.service';
+import { MessageLogDirection, MessageLogType, MessageLogStatus } from '../message-log/message-log.entity';
 import { renderTemplate } from '../../common/utils/template-render';
 import { createLogger } from '../../common/services/logger.service';
 import { HookManager } from '../../core/hooks';
@@ -30,6 +32,7 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
     private readonly blacklistService: BlacklistService,
     private readonly campaignService: CampaignService,
     private readonly sessionService: SessionService,
+    private readonly messageLogService: MessageLogService,
     private readonly hookManager: HookManager,
   ) {}
 
@@ -204,6 +207,7 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
         });
 
         let savedMsg: CampaignMessage | null = null;
+        const chatId = `${contact.number.replace('+', '')}@c.us`;
 
         try {
           const engine = this.sessionService.getEngine(campaign.sessionId);
@@ -216,7 +220,46 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
             return;
           }
 
-          const chatId = `${contact.number.replace('+', '')}@c.us`;
+          // Verify number exists on WhatsApp before sending
+          const numberExists = await engine.checkNumberExists(contact.number.replace('+', ''));
+          if (!numberExists) {
+            this.logger.warn(`Number ${contact.number} not on WhatsApp, skipping`, {
+              campaignId, action: 'number_not_found',
+            });
+            const skipMsg = this.campaignMessageRepo.create({
+              campaignId: campaign.id,
+              sessionId: campaign.sessionId,
+              contactNumber: contact.number,
+              contactName: contact.name || null,
+              renderedMessage: rendered,
+              status: CampaignMessageStatus.SKIPPED,
+              errorMessage: 'Number not registered on WhatsApp',
+              messageIndex: i,
+              skippedAt: new Date(),
+            });
+            await this.campaignMessageRepo.save(skipMsg);
+
+            await this.messageLogService.log({
+              sessionId: campaign.sessionId,
+              type: MessageLogType.CAMPAIGN,
+              chatId,
+              contactNumber: contact.number,
+              contactName: contact.name,
+              body: rendered,
+              status: MessageLogStatus.SKIPPED,
+              errorMessage: 'Number not registered on WhatsApp',
+              campaignId: campaign.id,
+              campaignName: campaign.name,
+            });
+
+            await this.campaignService.updateProgress(campaignId, {
+              skippedCount: (freshCampaign.skippedCount ?? 0) + 1,
+              currentIndex: i + 1,
+            });
+            spinningIndex++;
+            continue;
+          }
+
           const campaignMsg = this.campaignMessageRepo.create({
             campaignId: campaign.id,
             sessionId: campaign.sessionId,
@@ -231,7 +274,6 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
           // Natural typing flow: show typing indicator, wait, then send
           if (typeof engine.sendChatState === 'function') {
             await engine.sendChatState(chatId, 'typing');
-            // Simulate realistic typing time: 1-3 seconds based on message length
             const typingDuration = Math.min(1000 + rendered.length * 10, 3000);
             await this.delay(typingDuration);
           }
@@ -247,6 +289,20 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
           savedMsg.sentAt = new Date();
           await this.campaignMessageRepo.save(savedMsg);
           this.sentMessages.set(result.id, campaignId);
+
+          // Log to message_log
+          await this.messageLogService.log({
+            sessionId: campaign.sessionId,
+            type: MessageLogType.CAMPAIGN,
+            chatId,
+            contactNumber: contact.number,
+            contactName: contact.name,
+            body: rendered,
+            status: MessageLogStatus.SENT,
+            waMessageId: result.id,
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+          });
 
           sentToday++;
           sentThisHour++;
@@ -280,6 +336,19 @@ export class CampaignExecutorService implements OnModuleInit, OnModuleDestroy {
             savedMsg.failedAt = new Date();
             await this.campaignMessageRepo.save(savedMsg);
           }
+
+          await this.messageLogService.log({
+            sessionId: campaign.sessionId,
+            type: MessageLogType.CAMPAIGN,
+            chatId,
+            contactNumber: contact.number,
+            contactName: contact.name,
+            body: rendered,
+            status: MessageLogStatus.FAILED,
+            errorMessage: String(error),
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+          });
 
           await this.campaignService.updateProgress(campaignId, {
             failedCount: freshCampaign.failedCount + 1,

@@ -14,6 +14,8 @@ import { createLogger } from '../../common/services/logger.service';
 import { SsrfBlockedError } from '../../common/security/ssrf-guard';
 import { userPart } from '../../engine/identity/wa-id';
 import { LidMappingStoreService } from '../../engine/identity/lid-mapping-store.service';
+import { MessageLogService } from '../message-log/message-log.service';
+import { MessageLogDirection, MessageLogType, MessageLogStatus } from '../message-log/message-log.entity';
 
 export interface GetMessagesOptions {
   chatId?: string;
@@ -34,6 +36,7 @@ export class MessageService {
     private readonly hookManager: HookManager,
     private readonly templateService: TemplateService,
     private readonly lidMappingStore: LidMappingStoreService,
+    private readonly messageLogService: MessageLogService,
   ) {}
 
   async sendText(sessionId: string, dto: SendTextMessageDto): Promise<MessageResponseDto> {
@@ -70,10 +73,18 @@ export class MessageService {
         ? await engine.sendTextMessage(finalDto.chatId, finalDto.text, finalDto.mentions)
         : await engine.sendTextMessage(finalDto.chatId, finalDto.text);
     } catch (error) {
-      // The SEND itself failed — mark FAILED and fire the failure hook (a post-send persistence fault is
-      // handled separately by persistSentState and must NOT land here).
       message.status = MessageStatus.FAILED;
       await this.messageRepository.save(message);
+      await this.messageLogService.log({
+        sessionId,
+        direction: MessageLogDirection.OUTBOUND,
+        type: MessageLogType.TEXT,
+        chatId: finalDto.chatId,
+        contactNumber: finalDto.chatId.replace('@c.us', '').replace('@s.whatsapp.net', ''),
+        body: finalDto.text,
+        status: MessageLogStatus.FAILED,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       await this.hookManager.execute(
         'message:failed',
         { sessionId, error: error instanceof Error ? error.message : String(error), input: finalDto },
@@ -82,9 +93,18 @@ export class MessageService {
       throw error;
     }
 
-    // Note: the `message:sent` hook is emitted solely by SessionService.onMessageCreate (engine
-    // `message_create`) with a consistent IncomingMessage payload for ALL sends (text, media,
-    // and phone-composed), so it is intentionally not fired here to avoid a double dispatch.
+    // Log successful send
+    await this.messageLogService.log({
+      sessionId,
+      direction: MessageLogDirection.OUTBOUND,
+      type: MessageLogType.TEXT,
+      chatId: finalDto.chatId,
+      contactNumber: finalDto.chatId.replace('@c.us', '').replace('@s.whatsapp.net', ''),
+      body: finalDto.text,
+      status: MessageLogStatus.SENT,
+      waMessageId: result.id,
+    });
+
     return this.persistSentState(message, result);
   }
 

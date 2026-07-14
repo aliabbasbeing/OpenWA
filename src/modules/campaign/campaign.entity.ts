@@ -84,6 +84,9 @@ export class Campaign {
   @Column({ name: 'failed_count', type: 'int', default: 0 })
   failedCount: number;
 
+  @Column({ name: 'skipped_count', type: 'int', default: 0 })
+  skippedCount: number;
+
   @Column({ name: 'delivered_count', type: 'int', default: 0 })
   deliveredCount: number;
 

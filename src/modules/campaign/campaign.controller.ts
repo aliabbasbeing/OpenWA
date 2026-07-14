@@ -113,10 +113,19 @@ export class CampaignController {
     const seen = new Set<string>();
     const entries: Array<{ number: string; name?: string }> = [];
     for (const c of chats) {
-      if (c.isGroup || !c.id.endsWith('@c.us')) continue;
-      const raw = c.id.replace('@c.us', '');
+      if (c.isGroup) continue;
+      const isCus = c.id.endsWith('@c.us');
+      const isLid = c.id.endsWith('@lid');
+      if (!isCus && !isLid) continue;
+      let raw = isCus ? c.id.replace('@c.us', '') : c.id.replace('@lid', '');
       const digits = raw.replace(/\D/g, '');
       if (digits.length < 7 || /^0+$/.test(digits)) continue;
+      if (isLid) {
+        try {
+          const resolved = await this.sessionService.resolveContactPhone(body.sessionId, c.id);
+          if (resolved) raw = resolved;
+        } catch { }
+      }
       const number = raw.startsWith('+') ? raw : `+${raw}`;
       if (seen.has(number)) continue;
       seen.add(number);
@@ -252,6 +261,35 @@ export class CampaignController {
   @ApiParam({ name: 'id', description: 'Campaign ID' })
   async deleteCampaign(@Param('id') id: string) {
     await this.campaignService.delete(id);
+  }
+
+  @Post(':id/verify')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Verify all contact numbers exist on WhatsApp' })
+  @ApiParam({ name: 'id', description: 'Campaign ID' })
+  async verifyNumbers(@Param('id') id: string) {
+    const campaign = await this.campaignService.findOne(id);
+    const engine = this.sessionService.getEngine(campaign.sessionId);
+    if (!engine) throw new BadRequestException('Session engine not available');
+
+    const contacts = await this.campaignService.resolveContacts(id);
+    const results: Array<{ number: string; exists: boolean }> = [];
+    let valid = 0;
+    let invalid = 0;
+
+    for (const contact of contacts) {
+      try {
+        const number = contact.number.replace('+', '');
+        const exists = await engine.checkNumberExists(number);
+        results.push({ number: contact.number, exists });
+        if (exists) valid++; else invalid++;
+      } catch {
+        results.push({ number: contact.number, exists: false });
+        invalid++;
+      }
+    }
+
+    return { total: contacts.length, valid, invalid, numbers: results };
   }
 
   @Post(':id/start')

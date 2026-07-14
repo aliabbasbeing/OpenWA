@@ -36,6 +36,7 @@ import { PluginsApiModule } from './modules/plugins/plugins.module';
 import { AgentToolsModule } from './core/agent-tools/agent-tools.module';
 import { IntegrationModule } from './modules/integration/integration.module';
 import { CampaignModule } from './modules/campaign/campaign.module';
+import { MessageLogModule } from './modules/message-log/message-log.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -138,6 +139,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/modules/message/**/*.entity{.ts,.js}',
             __dirname + '/modules/template/**/*.entity{.ts,.js}',
             __dirname + '/modules/campaign/**/*.entity{.ts,.js}',
+            __dirname + '/modules/message-log/**/*.entity{.ts,.js}',
             __dirname + '/engine/**/*.entity{.ts,.js}',
             __dirname + '/modules/integration/**/*.entity{.ts,.js}',
           ],
@@ -251,6 +253,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     AgentToolsModule, // Agent-invocable tool registry (protocol-neutral)
     IntegrationModule, // Integration Fabric: @Public provider-webhook ingress + fast-ack pipeline
     CampaignModule, // Bulk messaging campaigns, contact lists, blacklist
+    MessageLogModule, // Comprehensive message logging
     ...mcpModules, // MCP Streamable-HTTP server (opt-in via MCP_ENABLED=true)
     ...serveStaticModules, // Bundled dashboard SPA (production single-port setup)
   ],

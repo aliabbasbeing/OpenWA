@@ -1462,6 +1462,12 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     return engine.sendSeen(chatId);
   }
 
+  async resolveContactPhone(id: string, contactId: string): Promise<string | null> {
+    const engine = this.engines.get(id);
+    if (!engine) return null;
+    return engine.resolveContactPhone(contactId);
+  }
+
   async markUnread(id: string, chatId: string): Promise<boolean> {
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);

@@ -175,6 +175,7 @@ export class CampaignService {
   async updateProgress(id: string, progress: {
     sentCount?: number;
     failedCount?: number;
+    skippedCount?: number;
     deliveredCount?: number;
     readCount?: number;
     currentIndex?: number;
@@ -303,5 +304,14 @@ export class CampaignService {
     });
 
     return { messages, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async resolveContacts(campaignId: string): Promise<Array<{ number: string; name?: string; variables?: Record<string, string> }>> {
+    const campaign = await this.findOne(campaignId);
+    if (campaign.contactSource === 'contact_list' && campaign.contactListId) {
+      const list = await this.contactListRepo.findOne({ where: { id: campaign.contactListId } });
+      return list?.contacts ?? [];
+    }
+    return campaign.manualContacts.map(number => ({ number }));
   }
 }
