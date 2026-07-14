@@ -830,9 +830,11 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     const msg = mentions?.length
       ? await this.client!.sendMessage(chatId, text, { mentions })
       : await this.client!.sendMessage(chatId, text);
+    const messageId = msg?.id?._serialized ?? msg?.id?.id ?? msg?.id ?? `pending_${Date.now()}`;
+    const timestamp = msg?.timestamp ?? Math.floor(Date.now() / 1000);
     return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
+      id: messageId,
+      timestamp,
     };
   }
 
@@ -882,8 +884,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     });
 
     return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
+      id: msg?.id?._serialized ?? msg?.id?.id ?? msg?.id ?? `pending_${Date.now()}`,
+      timestamp: msg?.timestamp ?? Math.floor(Date.now() / 1000),
     };
   }
 
