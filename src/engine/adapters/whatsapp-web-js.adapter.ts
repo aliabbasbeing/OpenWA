@@ -202,6 +202,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   // Set once teardown begins so a late 'authenticated' can't resurrect a disconnecting adapter. Not
   // reset — an adapter is single-use after teardown (the session creates a fresh one to reconnect).
   private tearingDown = false;
+  private readonly resolvedSendIds = new Map<string, string>();
 
   constructor(private readonly config: WhatsAppWebJsConfig) {
     super();
@@ -1675,6 +1676,26 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     }
   }
 
+  private async resolveSendId(chatId: string): Promise<string> {
+    if (!chatId.endsWith('@c.us')) {
+      return chatId;
+    }
+    const cached = this.resolvedSendIds.get(chatId);
+    if (cached) {
+      return cached;
+    }
+    try {
+      const wid = await this.getNumberId(chatId.replace('@c.us', ''));
+      if (wid) {
+        this.resolvedSendIds.set(chatId, wid);
+        return wid;
+      }
+      return chatId;
+    } catch {
+      return chatId;
+    }
+  }
+
   async sendChatState(chatId: string, state: ChatState): Promise<void> {
     this.ensureReady();
     if (isChannelJid(chatId)) {
@@ -1683,7 +1704,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       return;
     }
     try {
-      const chat = await this.client!.getChatById(chatId);
+      const to = await this.resolveSendId(chatId);
+      const chat = await this.client!.getChatById(to);
       if (state === 'typing') {
         await chat.sendStateTyping();
       } else if (state === 'recording') {
@@ -1692,8 +1714,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         await chat.clearState();
       }
     } catch (error) {
-      // Presence is best-effort — a failure here must never break the surrounding send.
-      this.logger.error(`Error setting chat state '${state}' for ${chatId}`, String(error));
+      this.logger.warn(`Could not set chat state '${state}' for ${chatId} (best-effort)`, { error: String(error) });
     }
   }
 
