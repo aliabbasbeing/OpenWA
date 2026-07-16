@@ -288,7 +288,7 @@ export class CampaignExecutorService implements OnModuleInit, OnApplicationBoots
           // Natural typing flow: show typing indicator, wait, then send
           if (typeof engine.sendChatState === 'function') {
             await engine.sendChatState(chatId, 'typing');
-            const typingDuration = Math.min(1000 + rendered.length * 10, 3000);
+            const typingDuration = Math.min(2000 + rendered.length * 50, 8000);
             await this.delay(typingDuration);
           }
 

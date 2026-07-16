@@ -575,17 +575,18 @@ export class MessageService {
    * interval before the real send, so automated single sends don't look instantaneous (anti-ban).
    * ON by default — set `SIMULATE_TYPING=false` to disable. Engine-agnostic (goes through
    * `sendChatState`) and strictly best-effort — it never throws and never blocks the send if presence
-   * fails or the engine has no presence concept. `SIMULATE_TYPING_MAX_MS` (default 5000) caps the pause.
+   * fails or the engine has no presence concept. `SIMULATE_TYPING_MAX_MS` (default 8000) caps the pause.
    * Note: this covers single sends only; bulk sends use their own `delayBetweenMessages` throttle.
    */
   private async simulateTypingIfEnabled(engine: IWhatsAppEngine, chatId: string, text: string): Promise<void> {
     if (process.env.SIMULATE_TYPING === 'false') return;
     try {
       await engine.sendChatState(chatId, 'typing');
-      const maxMs = Number(process.env.SIMULATE_TYPING_MAX_MS) || 5000;
-      const planned = Math.min(maxMs, 500 + text.length * 45);
-      const jittered = Math.round(planned * (0.85 + Math.random() * 0.3)); // ±15% so it isn't metronomic
+      const maxMs = Number(process.env.SIMULATE_TYPING_MAX_MS) || 8000;
+      const planned = Math.min(maxMs, 2000 + text.length * 55);
+      const jittered = Math.round(planned * (0.85 + Math.random() * 0.3));
       await new Promise(resolve => setTimeout(resolve, jittered));
+      await engine.sendChatState(chatId, 'paused');
     } catch (error) {
       this.logger.warn(`simulateTyping skipped: ${error instanceof Error ? error.message : String(error)}`);
     }
