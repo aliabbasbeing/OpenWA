@@ -1698,14 +1698,11 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async sendChatState(chatId: string, state: ChatState): Promise<void> {
     this.ensureReady();
-    if (isChannelJid(chatId)) {
-      // A channel resolves to a wwebjs `Channel`, which has no presence methods
-      // (sendStateTyping/sendStateRecording/clearState). Presence is best-effort, so no-op.
+    if (isChannelJid(chatId) || chatId.endsWith('@lid')) {
       return;
     }
     try {
-      const to = await this.resolveSendId(chatId);
-      const chat = await this.client!.getChatById(to);
+      const chat = await this.client!.getChatById(chatId);
       if (state === 'typing') {
         await chat.sendStateTyping();
       } else if (state === 'recording') {
