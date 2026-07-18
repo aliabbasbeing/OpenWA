@@ -586,7 +586,6 @@ export class MessageService {
       const planned = Math.min(maxMs, 2000 + text.length * 55);
       const jittered = Math.round(planned * (0.85 + Math.random() * 0.3));
       await new Promise(resolve => setTimeout(resolve, jittered));
-      await engine.sendChatState(chatId, 'paused');
     } catch (error) {
       this.logger.warn(`simulateTyping skipped: ${error instanceof Error ? error.message : String(error)}`);
     }

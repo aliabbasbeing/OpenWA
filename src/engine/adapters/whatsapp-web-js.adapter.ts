@@ -1685,7 +1685,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       return cached;
     }
     try {
-      const wid = await this.getNumberId(chatId.replace('@c.us', ''));
+      const wid = await this.getNumberId(chatId);
       if (wid) {
         this.resolvedSendIds.set(chatId, wid);
         return wid;
@@ -1698,11 +1698,12 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async sendChatState(chatId: string, state: ChatState): Promise<void> {
     this.ensureReady();
-    if (isChannelJid(chatId) || chatId.endsWith('@lid')) {
+    if (isChannelJid(chatId)) {
       return;
     }
     try {
-      const chat = await this.client!.getChatById(chatId);
+      const to = await this.resolveSendId(chatId);
+      const chat = await this.client!.getChatById(to);
       if (state === 'typing') {
         await chat.sendStateTyping();
       } else if (state === 'recording') {
